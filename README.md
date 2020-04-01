@@ -12,9 +12,12 @@
 
 This library does not make any guarantees about constant-time operations, memory access patterns, or resistance to side-channel attacks.
 
-## Pending
+## Pending tasks
 
 - [ ] Implement `G2ProofOfPossession`
+- [ ] Implement signature verification
+- [ ] Implement signature aggregation
+- [ ] Add github actions to test PR and commits
 - [ ] Add test vectors from other implementations
 - [ ] Update BLS from IETF v1 -> v2
 - [ ] Switches hash-to-field to new v06 hash system
@@ -60,7 +63,7 @@ running 0 tests
 
 ```
 
-### Benchs
+### Benches
 ```
 $ cargo bench
    Compiling bls12_381_ietf v0.1.0 (/Users/edu/test/pairing_bench)
