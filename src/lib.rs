@@ -9,7 +9,8 @@ mod hash_to_curve;
 mod optimized_swu;
 
 use hash_to_curve::hash_to_g2;
-use pairing::bls12_381::{Bls12, G1Affine, G1Compressed, G2Compressed};
+use pairing::bls12_381::{Bls12, Fq12, G1Affine, G1Compressed, G2Compressed};
+use pairing::ff::Field;
 use pairing::{CurveAffine, CurveProjective, EncodedPoint, Engine, GroupDecodingError};
 
 pub trait BaseG2Ciphersuite: Engine {
@@ -29,6 +30,12 @@ pub trait BaseG2Ciphersuite: Engine {
         message: &[u8],
         dst: &'static str,
     ) -> Self::BLSSignature;
+    fn core_verify(
+        public_key: &Self::BLSPublicKey,
+        message: &[u8],
+        signature: &Self::BLSSignature,
+        dst: &'static str,
+    ) -> Result<bool,()>;
 }
 
 impl BaseG2Ciphersuite for Bls12 {
@@ -55,12 +62,36 @@ impl BaseG2Ciphersuite for Bls12 {
         let sig = message_point.mul(secret_key).into_affine();
         sig.into_compressed()
     }
+
+    fn core_verify(
+        public_key: &Self::BLSPublicKey,
+        message: &[u8],
+        signature: &Self::BLSSignature,
+        dst: &'static str,
+    ) -> Result<bool,()> {
+        let message_point = hash_to_g2(message, dst.as_bytes()).into_affine();
+        let mut pk_neg = public_key.into_affine().expect("Convert the public key into its affine");
+        pk_neg.negate();
+        let pairing_1 = Bls12::pairing(pk_neg, message_point);
+
+        let signature_affine = signature.into_affine().expect("Convert the signature into its affine");
+        let pairing_2 = Bls12::pairing(G1Affine::one(), signature_affine);
+
+        let mut result = pairing_1;
+        result.mul_assign(&pairing_2);
+
+        if result == Fq12::one() { Ok(true) } else { Err(()) }
+    }
 }
 
 pub trait G2Basic: BaseG2Ciphersuite {
     const DST: &'static str;
-
     fn sign(secret_key: Self::BLSSecretKey, message: &[u8]) -> Self::BLSSignature;
+    fn verify(
+        public_key: &Self::BLSPublicKey,
+        message: &[u8],
+        signature: &Self::BLSSignature,
+    ) -> Result<bool,()>;
 }
 
 impl G2Basic for Bls12 {
@@ -68,11 +99,23 @@ impl G2Basic for Bls12 {
     fn sign(secret_key: Self::BLSSecretKey, message: &[u8]) -> Self::BLSSignature {
         Self::core_sign(secret_key, message, <Self as G2Basic>::DST)
     }
+    fn verify(
+        public_key: &Self::BLSPublicKey,
+        message: &[u8],
+        signature: &Self::BLSSignature,
+    ) -> Result<bool,()> {
+        Self::core_verify(public_key, message, signature, <Self as G2Basic>::DST)
+    }
 }
 
 pub trait G2MessageAugmentation: BaseG2Ciphersuite {
     const DST: &'static str;
     fn sign(secret_key: Self::BLSSecretKey, message: &[u8]) -> Self::BLSSignature;
+    fn verify(
+        public_key: &Self::BLSPublicKey,
+        message: &[u8],
+        signature: &Self::BLSSignature,
+    ) -> Result<bool,()>;
 }
 
 impl G2MessageAugmentation for Bls12 {
@@ -86,7 +129,16 @@ impl G2MessageAugmentation for Bls12 {
             <Self as G2MessageAugmentation>::DST,
         )
     }
+    fn verify(
+        public_key: &Self::BLSPublicKey,
+        message: &[u8],
+        signature: &Self::BLSSignature,
+    ) -> Result<bool,()> {
+        let augmented_message = [public_key.as_ref(), message].concat();
+        Self::core_verify(public_key, &augmented_message, signature, <Self as G2MessageAugmentation>::DST)
+    }
 }
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -277,5 +329,68 @@ mod tests {
     fn bench_sign_g2_message_augmentation(b: &mut Bencher) {
         let sk = Fr::from_str("3333").unwrap();
         b.iter(|| <Bls12 as G2MessageAugmentation>::sign(sk, b"edu@dappnode.io"));
+    }
+
+    #[test]
+    fn test_verify_g2basic() {
+        const SK: &'static str = "3333";
+        const MESSAGE: &'static str = "edu@dappnode.io!!!";
+        let pk = Bls12::sk_to_pk(Fr::from_str(SK).unwrap());
+        let signature = <Bls12 as G2Basic>::sign(Fr::from_str(SK).unwrap(), MESSAGE.as_bytes());
+
+        assert!((<Bls12 as G2Basic>::verify(&pk, MESSAGE.as_bytes(),&signature)).unwrap());
+    }
+    #[test]
+    #[should_panic]
+    fn test_verify_g2basic_panic() {
+        const SK: &'static str = "3333";
+        const MESSAGE: &'static str = "edu@dappnode.io!!!";
+        let pk = Bls12::sk_to_pk(Fr::from_str(SK).unwrap());
+        let signature = hex::decode("7d1ecc51bdbf1f7b6e714c8b2195e6ef039f651186d9fe22930791444be6dccef26fe90df82bd0feb9cddabf7ff5d550ed2ba9c8fd1399b3b3248288b2d011e5d5aa94d98fb543324a92a9d49c172cfaea5611a2deb923653643b7603d006c8").unwrap();
+        let mut sign = G2Compressed::empty();
+        let sign_mut = sign.as_mut();
+        sign_mut.clone_from_slice(&signature[..]);
+        <Bls12 as G2Basic>::verify(&pk, MESSAGE.as_bytes(),&sign).unwrap();
+    }
+
+
+    #[bench]
+    fn bench_verify_g2basic(b: &mut Bencher) {
+        const SK: &'static str = "3333";
+        const MESSAGE: &'static str = "edu@dappnode.io!!!";
+        let pk = Bls12::sk_to_pk(Fr::from_str(SK).unwrap());
+        let signature = <Bls12 as G2Basic>::sign(Fr::from_str(SK).unwrap(), MESSAGE.as_bytes());
+        b.iter(|| <Bls12 as G2Basic>::verify(&pk, MESSAGE.as_bytes(),&signature));
+    }
+    
+    #[test]
+    fn test_verify_g2_message_augmentation() {
+        const SK: &'static str = "3333";
+        const MESSAGE: &'static str = "edu@dappnode.io!!!";
+        let pk = Bls12::sk_to_pk(Fr::from_str(SK).unwrap());
+        let signature = <Bls12 as G2MessageAugmentation>::sign(Fr::from_str(SK).unwrap(), MESSAGE.as_bytes());
+        assert!((<Bls12 as G2MessageAugmentation>::verify(&pk, MESSAGE.as_bytes(),&signature)).unwrap());
+    }
+    #[test]
+    #[should_panic]
+    fn test_verify_g2_message_augmentation_panic() {
+        const SK: &'static str = "3333";
+        const MESSAGE: &'static str = "edu@dappnode.io!!!";
+        let pk = Bls12::sk_to_pk(Fr::from_str(SK).unwrap());
+        let signature = hex::decode("7d1ecc51bdbf1f7b6e714c8b2195e6ef039f651186d9fe22930791444be6dccef26fe90df82bd0feb9cddabf7ff5d550ed2ba9c8fd1399b3b3248288b2d011e5d5aa94d98fb543324a92a9d49c172cfaea5611a2deb923653643b7603d006c8").unwrap();
+        let mut sign = G2Compressed::empty();
+        let sign_mut = sign.as_mut();
+        sign_mut.clone_from_slice(&signature[..]);
+        <Bls12 as G2MessageAugmentation>::verify(&pk, MESSAGE.as_bytes(),&sign).unwrap();
+    }
+
+
+    #[bench]
+    fn bench_verify_g2_message_augmentation(b: &mut Bencher) {
+        const SK: &'static str = "3333";
+        const MESSAGE: &'static str = "edu@dappnode.io!!!";
+        let pk = Bls12::sk_to_pk(Fr::from_str(SK).unwrap());
+        let signature = <Bls12 as G2MessageAugmentation>::sign(Fr::from_str(SK).unwrap(), MESSAGE.as_bytes());
+        b.iter(|| <Bls12 as G2MessageAugmentation>::verify(&pk, MESSAGE.as_bytes(),&signature));
     }
 }
