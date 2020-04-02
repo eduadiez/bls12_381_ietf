@@ -4,6 +4,10 @@ use pairing::bls12_381::{Fq, Fq2};
 use pairing::ff::{Field, PrimeField};
 use std::string::String;
 
+// - L is the integer given by ceil((1.5 * ceil(log2(r))) / 8).
+pub const L: usize = 48;
+pub const SALT: &str = "BLS-SIG-KEYGEN-SALT-";
+
 lazy_static! {
 
     pub static ref FQ_0: Fq = Fq::zero();

@@ -14,6 +14,7 @@ This library does not make any guarantees about constant-time operations, memory
 
 ## Pending tasks
 
+- [x] Implement KeyGen standard
 - [ ] Implement `G2ProofOfPossession`
 - [x] Implement signature verification
 - [ ] Implement signature aggregation
@@ -27,16 +28,16 @@ This library does not make any guarantees about constant-time operations, memory
 ### Examples
 ```
 $ cargo run --example g2basic
-   Compiling bls12_381_ietf v0.1.0 (/Users/edu/test/pairing_bench)
-    Finished dev [unoptimized + debuginfo] target(s) in 0.71s
+   Compiling bls12_381_ietf v0.1.0 (/Users/edu/bls/bls12_381_ietf)
+    Finished dev [unoptimized + debuginfo] target(s) in 1.46s
      Running `target/debug/examples/g2basic`
-Public Key:     8bb1ad17ca77078a500ef0780c3c3a5f0dc26290b0bfb21d2c76f1a827bed8764d7f32332dc2db3084b1faea29134ea7
-Message:        edu@dappnode.io!!!
-Signature:      87d1ecc51bdbf1f7b6e714c8b2195e6ef039f651186d9fe22930791444be6dccef26fe90df82bd0feb9cddabf7ff5d550ed2ba9c8fd1399b3b3248288b2d011e5d5aa94d98fb543324a92a9d49c172cfaea5611a2deb923653643b7603d006c8
-Signature verified correctly!
+Public Key:     81d84ab98c774e9f4f18f17d968dbb0ada8fbb6210ac48e372813ac5f7b67f188ddf11dcd71644c7226cab56869ba6a4
+Message:        edu@dappnode.io
+Signature:      b3731f23c92afafc4d511
 
 $ cargo run --example g2messageaugmentation
-    Finished dev [unoptimized + debuginfo] target(s) in 0.04s
+   Compiling bls12_381_ietf v0.1.0 (/Users/edu/bls/bls12_381_ietf)
+    Finished dev [unoptimized + debuginfo] target(s) in 0.62s
      Running `target/debug/examples/g2messageaugmentation`
 Public Key:     8bb1ad17ca77078a500ef0780c3c3a5f0dc26290b0bfb21d2c76f1a827bed8764d7f32332dc2db3084b1faea29134ea7
 Message:        edu@dappnode.io!!!
@@ -47,56 +48,58 @@ Signature verified correctly!
 ### Tests
 ```
 $ cargo test
-   Compiling bls12_381_ietf v0.1.0 (/Users/edu/test/pairing_bench)
-    Finished test [unoptimized + debuginfo] target(s) in 1.04s
-     Running target/debug/deps/bls12_381_ietf-a0f9c147364f4d8f
+   Compiling bls12_381_ietf v0.1.0 (/Users/edu/bls/bls12_381_ietf)
+    Finished test [unoptimized + debuginfo] target(s) in 1.63s
+     Running target/debug/deps/bls12_381_ietf-92da16f66df5b352
 
-running 21 tests
+running 23 tests
 test optimized_swu::tests::test_sgn0_be ... ok
 test optimized_swu::tests::bench_iso_map_g2 ... ok
 test optimized_swu::tests::test_iso_map_g2 ... ok
-test optimized_swu::tests::test_sqrt_division_fq2 ... ok
 test optimized_swu::tests::bench_sqrt_division_fq2 ... ok
+test optimized_swu::tests::test_sqrt_division_fq2 ... ok
 test tests::bench_test_priv_to_pub ... ok
-test optimized_swu::tests::test_optimized_swu_g2 ... ok
 test optimized_swu::tests::bench_optimized_swu_g2 ... ok
+test optimized_swu::tests::test_optimized_swu_g2 ... ok
+test tests::bench_keygen ... ok
 test tests::test_priv_to_pub ... ok
+test tests::test_keygen ... ok
 test tests::bench_hash_to_g2 ... ok
-test tests::bench_sign_g2_message_augmentation ... ok
+test tests::test_sign_g2basic ... ok
 test tests::test_verify_g2_message_augmentation_panic ... ok
 test tests::bench_sign_g2basic ... ok
 test tests::test_verify_g2basic_panic ... ok
+test tests::bench_sign_g2_message_augmentation ... ok
 test tests::test_sign_g2_message_augmentation ... ok
-test tests::test_sign_g2basic ... ok
 test tests::test_hash_to_g2 ... ok
 test tests::bench_verify_g2basic ... ok
 test tests::bench_verify_g2_message_augmentation ... ok
 test tests::test_verify_g2_message_augmentation ... ok
 test tests::test_verify_g2basic ... ok
 
-test result: ok. 21 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
+test result: ok. 23 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
 
    Doc-tests bls12_381_ietf
 
 running 0 tests
 
 test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
-
 ```
 
 ### Benches
 ```
 $ cargo bench
-   Compiling bls12_381_ietf v0.1.0 (/Users/edu/test/pairing_bench)
-    Finished bench [optimized] target(s) in 2.70s
-     Running target/release/deps/bls12_381_ietf-b40b8bd2734cabbc
+   Compiling bls12_381_ietf v0.1.0 (/Users/edu/bls/bls12_381_ietf)
+    Finished bench [optimized] target(s) in 2.56s
+     Running target/release/deps/bls12_381_ietf-29a9ffc0e2b8dcd3
 
-running 21 tests
+running 23 tests
 test optimized_swu::tests::test_iso_map_g2 ... ignored
 test optimized_swu::tests::test_optimized_swu_g2 ... ignored
 test optimized_swu::tests::test_sgn0_be ... ignored
 test optimized_swu::tests::test_sqrt_division_fq2 ... ignored
 test tests::test_hash_to_g2 ... ignored
+test tests::test_keygen ... ignored
 test tests::test_priv_to_pub ... ignored
 test tests::test_sign_g2_message_augmentation ... ignored
 test tests::test_sign_g2basic ... ignored
@@ -104,17 +107,18 @@ test tests::test_verify_g2_message_augmentation ... ignored
 test tests::test_verify_g2_message_augmentation_panic ... ignored
 test tests::test_verify_g2basic ... ignored
 test tests::test_verify_g2basic_panic ... ignored
-test optimized_swu::tests::bench_iso_map_g2        ... bench:       8,009 ns/iter (+/- 1,005)
-test optimized_swu::tests::bench_optimized_swu_g2  ... bench:     237,090 ns/iter (+/- 25,174)
-test optimized_swu::tests::bench_sqrt_division_fq2 ... bench:     225,120 ns/iter (+/- 24,868)
-test tests::bench_hash_to_g2                       ... bench:   3,511,952 ns/iter (+/- 781,707)
-test tests::bench_sign_g2_message_augmentation     ... bench:   3,586,602 ns/iter (+/- 189,292)
-test tests::bench_sign_g2basic                     ... bench:   3,582,481 ns/iter (+/- 371,437)
-test tests::bench_test_priv_to_pub                 ... bench:      17,555 ns/iter (+/- 1,888)
-test tests::bench_verify_g2_message_augmentation   ... bench:   9,712,917 ns/iter (+/- 364,032)
-test tests::bench_verify_g2basic                   ... bench:   9,753,976 ns/iter (+/- 535,093)
+test optimized_swu::tests::bench_iso_map_g2        ... bench:       7,789 ns/iter (+/- 1,293)
+test optimized_swu::tests::bench_optimized_swu_g2  ... bench:     233,062 ns/iter (+/- 22,060)
+test optimized_swu::tests::bench_sqrt_division_fq2 ... bench:     222,143 ns/iter (+/- 19,289)
+test tests::bench_hash_to_g2                       ... bench:   3,571,612 ns/iter (+/- 332,016)
+test tests::bench_keygen                           ... bench:     258,906 ns/iter (+/- 18,152)
+test tests::bench_sign_g2_message_augmentation     ... bench:   3,637,884 ns/iter (+/- 393,305)
+test tests::bench_sign_g2basic                     ... bench:   3,557,166 ns/iter (+/- 193,992)
+test tests::bench_test_priv_to_pub                 ... bench:      17,496 ns/iter (+/- 1,461)
+test tests::bench_verify_g2_message_augmentation   ... bench:   9,779,860 ns/iter (+/- 2,000,297)
+test tests::bench_verify_g2basic                   ... bench:  10,094,099 ns/iter (+/- 2,964,663)
 
-test result: ok. 0 passed; 0 failed; 12 ignored; 9 measured; 0 filtered out
+test result: ok. 0 passed; 0 failed; 13 ignored; 10 measured; 0 filtered out
 ```
 ## Reference implementations
 

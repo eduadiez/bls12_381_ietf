@@ -8,10 +8,15 @@ mod constants;
 mod hash_to_curve;
 mod optimized_swu;
 
+use crate::constants::{L, SALT};
+use crate::pairing::ff::PrimeField;
 use hash_to_curve::hash_to_g2;
-use pairing::bls12_381::{Bls12, Fq12, G1Affine, G1Compressed, G2Compressed};
+use hkdf::Hkdf;
+use num_bigint::BigUint;
+use pairing::bls12_381::{Bls12, Fq12, Fr, G1Affine, G1Compressed, G2Compressed};
 use pairing::ff::Field;
 use pairing::{CurveAffine, CurveProjective, EncodedPoint, Engine, GroupDecodingError};
+use sha2::Sha256;
 
 pub trait BaseG2Ciphersuite: Engine {
     const DST: &'static str;
@@ -22,6 +27,7 @@ pub trait BaseG2Ciphersuite: Engine {
     type Fq2;
 
     fn sk_to_pk(secret_key: Self::BLSSecretKey) -> Self::BLSPublicKey;
+    fn keygen(ikm: &[u8]) -> (Self::BLSPublicKey, Self::BLSSecretKey);
     fn key_validate(
         secret_key: Self::BLSPublicKey,
     ) -> Result<<Self as pairing::Engine>::G1Affine, pairing::GroupDecodingError>;
@@ -35,7 +41,7 @@ pub trait BaseG2Ciphersuite: Engine {
         message: &[u8],
         signature: &Self::BLSSignature,
         dst: &'static str,
-    ) -> Result<bool,()>;
+    ) -> Result<bool, ()>;
 }
 
 impl BaseG2Ciphersuite for Bls12 {
@@ -47,6 +53,16 @@ impl BaseG2Ciphersuite for Bls12 {
 
     fn sk_to_pk(secret_key: Self::BLSSecretKey) -> Self::BLSPublicKey {
         G1Compressed::from_affine(G1Affine::one().mul(secret_key).into_affine())
+    }
+
+    fn keygen(ikm: &[u8]) -> (Self::BLSPublicKey, Self::BLSSecretKey) {
+        let (_, hk) = Hkdf::<Sha256>::extract(Some(SALT.as_bytes()), &ikm);
+        let mut okm = [0u8; L];
+        hk.expand(&[], &mut okm)
+            .expect("L is a valid length for Sha256 to output");
+        let b = BigUint::from_bytes_be(&okm[..]);
+        let sk = Fr::from_str(&b.to_str_radix(10)).expect("A Fr valid point");
+        (Self::sk_to_pk(sk), sk)
     }
 
     fn key_validate(public_key: Self::BLSPublicKey) -> Result<Self::G1Affine, GroupDecodingError> {
@@ -68,19 +84,27 @@ impl BaseG2Ciphersuite for Bls12 {
         message: &[u8],
         signature: &Self::BLSSignature,
         dst: &'static str,
-    ) -> Result<bool,()> {
+    ) -> Result<bool, ()> {
         let message_point = hash_to_g2(message, dst.as_bytes()).into_affine();
-        let mut pk_neg = public_key.into_affine().expect("Convert the public key into its affine");
+        let mut pk_neg = public_key
+            .into_affine()
+            .expect("Convert the public key into its affine");
         pk_neg.negate();
         let pairing_1 = Bls12::pairing(pk_neg, message_point);
 
-        let signature_affine = signature.into_affine().expect("Convert the signature into its affine");
+        let signature_affine = signature
+            .into_affine()
+            .expect("Convert the signature into its affine");
         let pairing_2 = Bls12::pairing(G1Affine::one(), signature_affine);
 
         let mut result = pairing_1;
         result.mul_assign(&pairing_2);
 
-        if result == Fq12::one() { Ok(true) } else { Err(()) }
+        if result == Fq12::one() {
+            Ok(true)
+        } else {
+            Err(())
+        }
     }
 }
 
@@ -91,7 +115,7 @@ pub trait G2Basic: BaseG2Ciphersuite {
         public_key: &Self::BLSPublicKey,
         message: &[u8],
         signature: &Self::BLSSignature,
-    ) -> Result<bool,()>;
+    ) -> Result<bool, ()>;
 }
 
 impl G2Basic for Bls12 {
@@ -103,7 +127,7 @@ impl G2Basic for Bls12 {
         public_key: &Self::BLSPublicKey,
         message: &[u8],
         signature: &Self::BLSSignature,
-    ) -> Result<bool,()> {
+    ) -> Result<bool, ()> {
         Self::core_verify(public_key, message, signature, <Self as G2Basic>::DST)
     }
 }
@@ -115,7 +139,7 @@ pub trait G2MessageAugmentation: BaseG2Ciphersuite {
         public_key: &Self::BLSPublicKey,
         message: &[u8],
         signature: &Self::BLSSignature,
-    ) -> Result<bool,()>;
+    ) -> Result<bool, ()>;
 }
 
 impl G2MessageAugmentation for Bls12 {
@@ -133,9 +157,14 @@ impl G2MessageAugmentation for Bls12 {
         public_key: &Self::BLSPublicKey,
         message: &[u8],
         signature: &Self::BLSSignature,
-    ) -> Result<bool,()> {
+    ) -> Result<bool, ()> {
         let augmented_message = [public_key.as_ref(), message].concat();
-        Self::core_verify(public_key, &augmented_message, signature, <Self as G2MessageAugmentation>::DST)
+        Self::core_verify(
+            public_key,
+            &augmented_message,
+            signature,
+            <Self as G2MessageAugmentation>::DST,
+        )
     }
 }
 
@@ -151,6 +180,29 @@ mod tests {
     use pairing::bls12_381::G2Affine;
     use pairing::ff::PrimeField;
     use test::Bencher;
+
+    #[test]
+    fn test_keygen() {
+        let (pk, sk) = Bls12::keygen(b"edu");
+        let res_pk = [
+            138, 58, 168, 150, 94, 218, 53, 78, 97, 36, 99, 248, 47, 204, 52, 231, 51, 134, 143,
+            162, 76, 76, 81, 121, 192, 32, 125, 53, 115, 34, 198, 103, 197, 155, 141, 121, 160, 99,
+            200, 222, 213, 1, 150, 80, 152, 29, 195, 29,
+        ];
+        let res_sk = [
+            0x704540e43a495e37,
+            0xedd0ee81a783e073,
+            0x918acabb2d1c50e7,
+            0x46229f89c6de24b9,
+        ];
+        assert_eq!(pk.as_ref(), &res_pk[..]);
+        assert_eq!(sk.into_repr().as_ref(), res_sk);
+    }
+
+    #[bench]
+    fn bench_keygen(b: &mut Bencher) {
+        b.iter(|| Bls12::keygen(b"edu"));
+    }
 
     #[test]
     fn test_priv_to_pub() {
@@ -338,7 +390,7 @@ mod tests {
         let pk = Bls12::sk_to_pk(Fr::from_str(SK).unwrap());
         let signature = <Bls12 as G2Basic>::sign(Fr::from_str(SK).unwrap(), MESSAGE.as_bytes());
 
-        assert!((<Bls12 as G2Basic>::verify(&pk, MESSAGE.as_bytes(),&signature)).unwrap());
+        assert!((<Bls12 as G2Basic>::verify(&pk, MESSAGE.as_bytes(), &signature)).unwrap());
     }
     #[test]
     #[should_panic]
@@ -350,9 +402,8 @@ mod tests {
         let mut sign = G2Compressed::empty();
         let sign_mut = sign.as_mut();
         sign_mut.clone_from_slice(&signature[..]);
-        <Bls12 as G2Basic>::verify(&pk, MESSAGE.as_bytes(),&sign).unwrap();
+        <Bls12 as G2Basic>::verify(&pk, MESSAGE.as_bytes(), &sign).unwrap();
     }
-
 
     #[bench]
     fn bench_verify_g2basic(b: &mut Bencher) {
@@ -360,16 +411,19 @@ mod tests {
         const MESSAGE: &'static str = "edu@dappnode.io!!!";
         let pk = Bls12::sk_to_pk(Fr::from_str(SK).unwrap());
         let signature = <Bls12 as G2Basic>::sign(Fr::from_str(SK).unwrap(), MESSAGE.as_bytes());
-        b.iter(|| <Bls12 as G2Basic>::verify(&pk, MESSAGE.as_bytes(),&signature));
+        b.iter(|| <Bls12 as G2Basic>::verify(&pk, MESSAGE.as_bytes(), &signature));
     }
-    
     #[test]
     fn test_verify_g2_message_augmentation() {
         const SK: &'static str = "3333";
         const MESSAGE: &'static str = "edu@dappnode.io!!!";
         let pk = Bls12::sk_to_pk(Fr::from_str(SK).unwrap());
-        let signature = <Bls12 as G2MessageAugmentation>::sign(Fr::from_str(SK).unwrap(), MESSAGE.as_bytes());
-        assert!((<Bls12 as G2MessageAugmentation>::verify(&pk, MESSAGE.as_bytes(),&signature)).unwrap());
+        let signature =
+            <Bls12 as G2MessageAugmentation>::sign(Fr::from_str(SK).unwrap(), MESSAGE.as_bytes());
+        assert!(
+            (<Bls12 as G2MessageAugmentation>::verify(&pk, MESSAGE.as_bytes(), &signature))
+                .unwrap()
+        );
     }
     #[test]
     #[should_panic]
@@ -381,16 +435,16 @@ mod tests {
         let mut sign = G2Compressed::empty();
         let sign_mut = sign.as_mut();
         sign_mut.clone_from_slice(&signature[..]);
-        <Bls12 as G2MessageAugmentation>::verify(&pk, MESSAGE.as_bytes(),&sign).unwrap();
+        <Bls12 as G2MessageAugmentation>::verify(&pk, MESSAGE.as_bytes(), &sign).unwrap();
     }
-
 
     #[bench]
     fn bench_verify_g2_message_augmentation(b: &mut Bencher) {
         const SK: &'static str = "3333";
         const MESSAGE: &'static str = "edu@dappnode.io!!!";
         let pk = Bls12::sk_to_pk(Fr::from_str(SK).unwrap());
-        let signature = <Bls12 as G2MessageAugmentation>::sign(Fr::from_str(SK).unwrap(), MESSAGE.as_bytes());
-        b.iter(|| <Bls12 as G2MessageAugmentation>::verify(&pk, MESSAGE.as_bytes(),&signature));
+        let signature =
+            <Bls12 as G2MessageAugmentation>::sign(Fr::from_str(SK).unwrap(), MESSAGE.as_bytes());
+        b.iter(|| <Bls12 as G2MessageAugmentation>::verify(&pk, MESSAGE.as_bytes(), &signature));
     }
 }
