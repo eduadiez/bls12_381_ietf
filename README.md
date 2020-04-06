@@ -22,6 +22,7 @@ This library does not make any guarantees about constant-time operations, memory
 - [ ] Add test vectors from other implementations
 - [ ] Update BLS from IETF v1 -> v2
 - [ ] Switches hash-to-field to new v06 hash system
+- [ ] Add [EIP-2333](https://eips.ethereum.org/EIPS/eip-2333) as a feature
 
 ## Commands
 
