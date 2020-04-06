@@ -2,20 +2,19 @@
 name = "bls12_381_ietf"
 version = "0.1.0"
 authors = ["Eduardo Antuña Díez <eduadiez@gmail.com>"]
+license = "GPL-3.0"
+description = "Rust implementation of the IETF BLS draft standard"
+repository = "https://github.com/eduadiez/bls12_381_ietf"
 edition = "2018"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
 hex = "0.4.2"
-#pairing = { package = "pairing_ce", git="https://github.com/matter-labs/pairing.git", branch="pull/6/head" }
-pairing = { package = "pairing_ce", git="https://github.com/gakonst/pairing.git", branch="expose-points" }
+pairing = { package = "pairing_ce", version="0.19.0" }
 num-bigint = "0.2"
 num-traits = "0.2"
 hkdf = "0.8.0"
 sha2 = { version = "0.8", default-features = false }
 lazy_static = { version = "1.1.0", features = ["spin_no_std"] }
-
 
 [lib]
 name = "bls12_381_ietf"
