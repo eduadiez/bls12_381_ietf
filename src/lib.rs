@@ -27,18 +27,18 @@ pub trait BaseG2Ciphersuite: Engine {
     type Fq2;
 
     fn sk_to_pk(secret_key: Self::BLSSecretKey) -> Self::BLSPublicKey;
-    fn keygen(ikm: &[u8]) -> (Self::BLSPublicKey, Self::BLSSecretKey);
+    fn keygen<T: AsRef<[u8]>>(ikm: T) -> (Self::BLSPublicKey, Self::BLSSecretKey);
     fn key_validate(
         secret_key: Self::BLSPublicKey,
     ) -> Result<<Self as pairing::Engine>::G1Affine, pairing::GroupDecodingError>;
-    fn core_sign(
+    fn core_sign<T: AsRef<[u8]>>(
         secret_key: Self::BLSSecretKey,
-        message: &[u8],
+        message: T,
         dst: &'static str,
     ) -> Self::BLSSignature;
-    fn core_verify(
+    fn core_verify<T: AsRef<[u8]>>(
         public_key: &Self::BLSPublicKey,
-        message: &[u8],
+        message: T,
         signature: &Self::BLSSignature,
         dst: &'static str,
     ) -> Result<bool, GroupDecodingError>;
@@ -55,13 +55,13 @@ impl BaseG2Ciphersuite for Bls12 {
         G1Compressed::from_affine(G1Affine::one().mul(secret_key).into_affine())
     }
 
-    fn keygen(ikm: &[u8]) -> (Self::BLSPublicKey, Self::BLSSecretKey) {
-        let (_, hk) = Hkdf::<Sha256>::extract(Some(SALT.as_bytes()), &ikm);
+    fn keygen<T: AsRef<[u8]>>(ikm: T) -> (Self::BLSPublicKey, Self::BLSSecretKey) {
+        let (_, hk) = Hkdf::<Sha256>::extract(Some(SALT.as_bytes()), ikm.as_ref());
         let mut okm = [0u8; L];
         hk.expand(&[], &mut okm)
             .expect("L is a valid length for Sha256 to output");
         let b = BigUint::from_bytes_be(&okm[..]);
-        let sk = Fr::from_str(&b.to_str_radix(10)).expect("A Fr valid point");
+        let sk = Fr::from_str(&b.to_str_radix(10)).unwrap();
         (Self::sk_to_pk(sk), sk)
     }
 
@@ -69,30 +69,28 @@ impl BaseG2Ciphersuite for Bls12 {
         public_key.into_affine()
     }
 
-    fn core_sign(
+    fn core_sign<T: AsRef<[u8]>>(
         secret_key: Self::BLSSecretKey,
-        message: &[u8],
+        message: T,
         dst: &'static str,
     ) -> Self::BLSSignature {
-        let message_point = hash_to_g2(message, dst.as_bytes()).into_affine();
+        let message_point = hash_to_g2(message.as_ref(), dst.as_bytes()).into_affine();
         let sig = message_point.mul(secret_key).into_affine();
         sig.into_compressed()
     }
 
-    fn core_verify(
+    fn core_verify<T: AsRef<[u8]>>(
         public_key: &Self::BLSPublicKey,
-        message: &[u8],
+        message: T,
         signature: &Self::BLSSignature,
         dst: &'static str,
     ) -> Result<bool, GroupDecodingError> {
-        let message_point = hash_to_g2(message, dst.as_bytes()).into_affine();
-        let mut pk_neg = public_key
-            .into_affine()?;
+        let message_point = hash_to_g2(message.as_ref(), dst.as_bytes()).into_affine();
+        let mut pk_neg = public_key.into_affine()?;
         pk_neg.negate();
         let pairing_1 = Bls12::pairing(pk_neg, message_point);
 
-        let signature_affine = signature
-            .into_affine()?;
+        let signature_affine = signature.into_affine()?;
         let pairing_2 = Bls12::pairing(G1Affine::one(), signature_affine);
 
         let mut result = pairing_1;
@@ -169,10 +167,12 @@ impl G2MessageAugmentation for Bls12 {
 #[cfg(test)]
 mod tests {
     use super::*;
-
     use pairing::bls12_381::Bls12;
+    use pairing::bls12_381::Fq2;
+    use pairing::bls12_381::Fq;
+    use pairing::bls12_381::FqRepr;
     use pairing::bls12_381::Fr;
-    use pairing::bls12_381::G2Uncompressed;
+    use pairing::bls12_381::G2Affine;
     use pairing::ff::PrimeField;
     use test::Bencher;
 
@@ -226,51 +226,96 @@ mod tests {
             50, 53, 54, 45, 83, 83, 87, 85, 45, 82, 79, 45, 95, 78, 85, 76, 95,
         ];
 
-        let mut result: G2Uncompressed = G2Uncompressed::empty();
-
-        result.as_mut().copy_from_slice(&[
-            7, 96, 184, 59, 252, 155, 121, 217, 191, 182, 127, 56, 91, 135, 141, 250, 234, 157, 32,
-            129, 205, 114, 85, 166, 106, 8, 225, 6, 190, 18, 27, 86, 160, 113, 22, 122, 230, 185,
-            18, 184, 72, 197, 172, 121, 142, 53, 98, 51, 22, 10, 82, 221, 165, 122, 100, 137, 81,
-            246, 140, 206, 207, 223, 199, 111, 129, 121, 149, 141, 159, 251, 190, 15, 96, 16, 95,
-            169, 34, 112, 240, 62, 246, 116, 3, 71, 124, 100, 202, 84, 240, 130, 126, 15, 240, 234,
-            78, 90, 2, 170, 62, 50, 25, 69, 10, 150, 177, 0, 239, 87, 169, 32, 140, 243, 199, 189,
-            238, 143, 81, 223, 111, 213, 210, 126, 234, 34, 231, 26, 110, 152, 86, 14, 223, 142,
-            17, 105, 44, 54, 182, 146, 149, 131, 205, 53, 80, 244, 19, 250, 174, 168, 48, 158, 34,
-            180, 195, 107, 13, 155, 115, 69, 107, 232, 29, 238, 190, 148, 233, 218, 196, 9, 247,
-            114, 233, 144, 67, 7, 141, 83, 231, 201, 34, 3, 117, 48, 1, 78, 61, 159, 129, 197, 25,
-            252, 17, 185,
-        ]);
-        //result:
-
-        assert_eq!(
-            hash_to_g2(&message[..], &dst).into_affine(),
-            result.into_affine().unwrap()
+        let result = G2Affine::from_xy_unchecked(
+            Fq2 {
+                c0: Fq::from_repr(FqRepr([
+                    0xf0827e0ff0ea4e5a,
+                    0xf67403477c64ca54,
+                    0x60105fa92270f03e,
+                    0x8179958d9ffbbe0f,
+                    0x51f68ccecfdfc76f,
+                    0x160a52dda57a6489,
+                ]))
+                .unwrap(),
+                c1: Fq::from_repr(FqRepr([
+                    0x48c5ac798e356233,
+                    0xa071167ae6b912b8,
+                    0x6a08e106be121b56,
+                    0xea9d2081cd7255a6,
+                    0xbfb67f385b878dfa,
+                    0x760b83bfc9b79d9,
+                ]))
+                .unwrap(),
+            },
+            Fq2 {
+                c0: Fq::from_repr(FqRepr([
+                    0x3d9f81c519fc11b9,
+                    0xe7c922037530014e,
+                    0xf772e99043078d53,
+                    0x1deebe94e9dac409,
+                    0xc36b0d9b73456be8,
+                    0x13faaea8309e22b4,
+                ]))
+                .unwrap(),
+                c1: Fq::from_repr(FqRepr([
+                    0xb6929583cd3550f4,
+                    0x560edf8e11692c36,
+                    0xd27eea22e71a6e98,
+                    0xc7bdee8f51df6fd5,
+                    0xb100ef57a9208cf3,
+                    0x2aa3e3219450a96,
+                ]))
+                .unwrap(),
+            },
         );
+        assert_eq!(hash_to_g2(&message[..], &dst).into_affine(), result);
         // edu@dappnode.io
         let message = [
             101, 100, 117, 64, 100, 97, 112, 112, 110, 111, 100, 101, 46, 105, 111,
         ];
-        let mut result: G2Uncompressed = G2Uncompressed::empty();
-
-        result.as_mut().copy_from_slice(&[
-            8, 237, 200, 132, 117, 175, 8, 50, 2, 216, 170, 222, 112, 205, 78, 23, 91, 3, 237, 243,
-            53, 125, 118, 94, 215, 186, 2, 79, 72, 87, 116, 115, 216, 9, 160, 211, 98, 48, 47, 154,
-            196, 42, 186, 87, 147, 38, 67, 22, 7, 132, 148, 14, 174, 111, 17, 249, 225, 90, 215,
-            93, 147, 19, 148, 130, 78, 154, 55, 17, 34, 103, 82, 125, 34, 53, 92, 88, 91, 67, 225,
-            45, 210, 164, 52, 202, 23, 187, 75, 152, 133, 86, 93, 144, 172, 75, 68, 187, 24, 113,
-            53, 30, 125, 107, 18, 112, 163, 167, 128, 202, 16, 118, 145, 31, 72, 105, 219, 250,
-            210, 219, 189, 117, 185, 195, 45, 41, 196, 253, 230, 178, 100, 97, 112, 92, 237, 71,
-            250, 45, 53, 160, 144, 92, 149, 154, 240, 50, 1, 156, 150, 115, 125, 207, 180, 207,
-            195, 92, 144, 235, 121, 236, 15, 173, 209, 65, 68, 44, 179, 141, 234, 163, 110, 10,
-            227, 232, 248, 9, 10, 238, 70, 222, 102, 129, 194, 165, 61, 49, 225, 225, 46, 198, 60,
-            229, 16, 5,
-        ]);
-
-        assert_eq!(
-            hash_to_g2(&message[..], &dst).into_affine(),
-            result.into_affine().unwrap()
+        let result = G2Affine::from_xy_unchecked(
+            Fq2 {
+                c0: Fq::from_repr(FqRepr([
+                    0x85565d90ac4b44bb,
+                    0xd2a434ca17bb4b98,
+                    0x22355c585b43e12d,
+                    0x4e9a37112267527d,
+                    0xe15ad75d93139482,
+                    0x784940eae6f11f9,
+                ]))
+                .unwrap(),
+                c1: Fq::from_repr(FqRepr([
+                    0xc42aba5793264316,
+                    0xd809a0d362302f9a,
+                    0xd7ba024f48577473,
+                    0x5b03edf3357d765e,
+                    0x2d8aade70cd4e17,
+                    0x8edc88475af0832,
+                ]))
+                .unwrap(),
+            },
+            Fq2 {
+                c0: Fq::from_repr(FqRepr([
+                    0xe1e12ec63ce51005,
+                    0x46de6681c2a53d31,
+                    0x6e0ae3e8f8090aee,
+                    0xd141442cb38deaa3,
+                    0xc35c90eb79ec0fad,
+                    0x19c96737dcfb4cf,
+                ]))
+                .unwrap(),
+                c1: Fq::from_repr(FqRepr([
+                    0x35a0905c959af032,
+                    0x6461705ced47fa2d,
+                    0xb9c32d29c4fde6b2,
+                    0x4869dbfad2dbbd75,
+                    0xa3a780ca1076911f,
+                    0x1871351e7d6b1270,
+                ]))
+                .unwrap(),
+            },
         );
+        assert_eq!(hash_to_g2(&message[..], &dst).into_affine(), result);
     }
 
     #[bench]

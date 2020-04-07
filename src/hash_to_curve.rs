@@ -1,10 +1,9 @@
 use crate::constants::H_EFF;
 use crate::optimized_swu::{iso_map_g2, optimized_swu_g2};
-use crate::pairing::ff::PrimeFieldRepr;
-use crate::pairing::EncodedPoint;
+use crate::pairing::CurveAffine;
 use hkdf::Hkdf;
 use num_bigint::BigUint;
-use pairing::bls12_381::{Fq, Fq2, G2Affine, G2Uncompressed, G2};
+use pairing::bls12_381::{Fq, Fq2, G2Affine, G2};
 use pairing::ff::{Field, PrimeField};
 use pairing::CurveProjective;
 use sha2::Sha256;
@@ -79,21 +78,7 @@ pub fn map_to_curve_g2(u: Fq2) -> G2Affine {
     let mut iso_map_v_norm = iso_map_v;
     iso_map_v_norm.mul_assign(&iso_map_t_inv);
 
-    // Get a G2Affine from two Fq2
-    let mut result = G2Uncompressed::empty();
-    let mut u_c0: Vec<u8> = vec![];
-    let mut u_c1: Vec<u8> = vec![];
-    let mut v_c0: Vec<u8> = vec![];
-    let mut v_c1: Vec<u8> = vec![];
-    iso_map_u_norm.c0.into_repr().write_be(&mut u_c0).unwrap();
-    iso_map_u_norm.c1.into_repr().write_be(&mut u_c1).unwrap();
-    iso_map_v_norm.c0.into_repr().write_be(&mut v_c0).unwrap();
-    iso_map_v_norm.c1.into_repr().write_be(&mut v_c1).unwrap();
-
-    result.as_mut().copy_from_slice(&[&u_c1[..], &u_c0[..], &v_c1[..], &v_c0[..]].concat());
-    result
-        .into_affine_unchecked()
-        .expect("A map_to_curve_g2 G2Affine")
+    G2Affine::from_xy_unchecked(iso_map_u_norm, iso_map_v_norm)
 }
 
 /*
