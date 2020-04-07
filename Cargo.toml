@@ -1,6 +1,6 @@
 [package]
 name = "bls12_381_ietf"
-version = "0.1.1"
+version = "0.1.2"
 authors = ["Eduardo Antuña Díez <eduadiez@gmail.com>"]
 license = "GPL-3.0"
 description = "Rust implementation of the IETF BLS draft standard"
@@ -9,7 +9,7 @@ edition = "2018"
 
 [dependencies]
 hex = "0.4.2"
-pairing = { package = "pairing_ce", version="0.19.0" }
+pairing = { package = "pairing_ce", version="0.20.0" }
 num-bigint = "0.2"
 num-traits = "0.2"
 hkdf = "0.8.0"
