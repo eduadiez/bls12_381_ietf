@@ -41,7 +41,7 @@ pub trait BaseG2Ciphersuite: Engine {
         message: &[u8],
         signature: &Self::BLSSignature,
         dst: &'static str,
-    ) -> Result<bool, ()>;
+    ) -> Result<bool, GroupDecodingError>;
 }
 
 impl BaseG2Ciphersuite for Bls12 {
@@ -84,17 +84,15 @@ impl BaseG2Ciphersuite for Bls12 {
         message: &[u8],
         signature: &Self::BLSSignature,
         dst: &'static str,
-    ) -> Result<bool, ()> {
+    ) -> Result<bool, GroupDecodingError> {
         let message_point = hash_to_g2(message, dst.as_bytes()).into_affine();
         let mut pk_neg = public_key
-            .into_affine()
-            .expect("Convert the public key into its affine");
+            .into_affine()?;
         pk_neg.negate();
         let pairing_1 = Bls12::pairing(pk_neg, message_point);
 
         let signature_affine = signature
-            .into_affine()
-            .expect("Convert the signature into its affine");
+            .into_affine()?;
         let pairing_2 = Bls12::pairing(G1Affine::one(), signature_affine);
 
         let mut result = pairing_1;
@@ -103,7 +101,7 @@ impl BaseG2Ciphersuite for Bls12 {
         if result == Fq12::one() {
             Ok(true)
         } else {
-            Err(())
+            Ok(false)
         }
     }
 }
@@ -115,7 +113,7 @@ pub trait G2Basic: BaseG2Ciphersuite {
         public_key: &Self::BLSPublicKey,
         message: &[u8],
         signature: &Self::BLSSignature,
-    ) -> Result<bool, ()>;
+    ) -> Result<bool, GroupDecodingError>;
 }
 
 impl G2Basic for Bls12 {
@@ -127,7 +125,7 @@ impl G2Basic for Bls12 {
         public_key: &Self::BLSPublicKey,
         message: &[u8],
         signature: &Self::BLSSignature,
-    ) -> Result<bool, ()> {
+    ) -> Result<bool, GroupDecodingError> {
         Self::core_verify(public_key, message, signature, <Self as G2Basic>::DST)
     }
 }
@@ -139,7 +137,7 @@ pub trait G2MessageAugmentation: BaseG2Ciphersuite {
         public_key: &Self::BLSPublicKey,
         message: &[u8],
         signature: &Self::BLSSignature,
-    ) -> Result<bool, ()>;
+    ) -> Result<bool, GroupDecodingError>;
 }
 
 impl G2MessageAugmentation for Bls12 {
@@ -157,7 +155,7 @@ impl G2MessageAugmentation for Bls12 {
         public_key: &Self::BLSPublicKey,
         message: &[u8],
         signature: &Self::BLSSignature,
-    ) -> Result<bool, ()> {
+    ) -> Result<bool, GroupDecodingError> {
         let augmented_message = [public_key.as_ref(), message].concat();
         Self::core_verify(
             public_key,
