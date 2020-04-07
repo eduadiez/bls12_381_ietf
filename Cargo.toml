@@ -1,6 +1,6 @@
 [package]
 name = "bls12_381_ietf"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["Eduardo Antuña Díez <eduadiez@gmail.com>"]
 license = "GPL-3.0"
 description = "Rust implementation of the IETF BLS draft standard"
